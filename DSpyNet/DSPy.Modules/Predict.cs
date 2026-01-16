@@ -9,8 +9,13 @@ using System.Text.Json.Serialization;
 
 namespace DSpyNet.DSPy.Modules
 {
-    public class Predict<TSignature> : Module where TSignature : IDSpySignature, new()
+    /// <summary>
+    /// The standard predictor module. 
+    /// Takes a Signature, builds a prompt via Adapter, calls Semantic Kernel, parses output.
+    /// </summary>
+    public class Predict<TSignature> : Module, IPredictor where TSignature : IDSpySignature, new()
     {
+        // Changed to protected set to allow subclasses (like ChainOfThought) to set it during cloning
         public SignatureState State { get; protected set; }
         
         [JsonIgnore]
@@ -31,6 +36,8 @@ namespace DSpyNet.DSPy.Modules
         {
             _lm = lm;
             _adapter = new DSPyAdapter();
+            
+            // Initialize State from the static Type definition
             var signature = new Signature(typeof(TSignature));
             State = new SignatureState(signature);
         }
@@ -43,6 +50,7 @@ namespace DSpyNet.DSPy.Modules
 
         public override async Task<object> InvokeAsync(object input)
         {
+            // Support both Example and anonymous/typed objects
             Example inputExample;
             if (input is Example ex)
             {
@@ -50,6 +58,7 @@ namespace DSpyNet.DSPy.Modules
             }
             else
             {
+                // Convert object properties to Dictionary
                 var dict = new Dictionary<string, object>();
                 foreach (var prop in input.GetType().GetProperties())
                 {
@@ -63,19 +72,27 @@ namespace DSpyNet.DSPy.Modules
 
         public virtual async Task<Prediction> ForwardAsync(Example input)
         {
+            // 1. Format Prompt
             var prompt = _adapter.Format(State, input);
+            
             _logger?.LogDebug($"[DSPy Predict] Prompt generated:\n{prompt}");
 
+            // 2. Call LLM (Semantic Kernel)
+            // We use the default chat completion service.
+            // In a real app, arguments (temp, etc.) would come from config.
             var responseText = await _lm.GenerateAsync(prompt);
+
             _logger?.LogDebug($"[DSPy Predict] LLM Response:\n{responseText}");
 
+            // 3. Parse Response
             var prediction = _adapter.Parse(responseText, State);
 
+            // 4. Trace
             if (ExecutionState.IsTracing)
             {
                 ExecutionState.AddEntry(new TraceEntry
                 {
-                    SignatureState = State.Clone(),
+                    SignatureState = State.Clone(), // Snapshot state at this moment
                     Inputs = input,
                     Outputs = prediction,
                     PromptUsed = prompt
@@ -88,7 +105,7 @@ namespace DSpyNet.DSPy.Modules
         public override Module DeepClone()
         {
             var clone = (Predict<TSignature>)this.MemberwiseClone();
-            clone.State = this.State.Clone();
+            clone.State = this.State.Clone(); // Deep clone mutable state
             // LM reference is shared
             return clone;
         }
