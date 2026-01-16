@@ -9,6 +9,8 @@
     <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
       <PackageReference Include="Microsoft.SemanticKernel" Version="1.68.0" />
+      <!-- Добавлена библиотека для Байесовской оптимизации -->
+      <PackageReference Include="SharpLearning.Optimization" Version="0.31.8" />
     </ItemGroup>
 
 </Project>

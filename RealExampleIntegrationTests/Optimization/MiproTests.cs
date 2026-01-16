@@ -51,20 +51,18 @@ namespace RealExampleIntegrationTests.Optimization
 
             if (int.TryParse(scoreStr, out int score))
             {
-                // FIX: Повышаем планку до 5, чтобы увидеть разницу между промптами.
-                // Базовый промпт "Convert..." скорее всего даст 3-4 балла за "скучность".
-                // Оптимизированный промпт с демо должен дать 5.
+                // Требуем высокую оценку
                 return score >= 5; 
             }
             return false;
         }
 
         [Fact]
-        public async Task Optimize_NewsGeneration_WithMIPRO()
+        public async Task Optimize_NewsGeneration_WithMIPRO_Bayesian()
         {
             var lm = GetRouterAiLM();
 
-            // 1. Trainset (Примеры хорошего стиля)
+            // 1. Trainset
             var trainset = new List<Example>
             {
                 Example.From(
@@ -81,21 +79,22 @@ namespace RealExampleIntegrationTests.Optimization
                 )
             };
 
-            // 2. Student (Chain of Thought для лучшего качества)
+            // 2. Student 
             var student = new ChainOfThought<NewsGenSignature>(lm, _logger);
 
-            // 3. Configure MIPRO
+            // 3. Configure MIPRO with Bayesian Optimization
+            // Увеличим бюджет, так как Байесу нужно немного данных для разгона
             var mipro = new MIPRO<ChainOfThought<NewsGenSignature>>(
                 promptModel: lm,
                 metric: (g, p) => LlmJudgeMetric(g, p).Result, 
-                numCandidates: 2,       
-                numDemoSets: 2,         
-                numEvaluations: 3,      
+                numCandidates: 2,       // 2 кандидата инструкций (+1 исходная)
+                numDemoSets: 2,         // 2 набора демок (+1 zero-shot)
+                numEvaluations: 5,      // 5 итераций оптимизации (в проде ставьте 20-30)
                 maxBootstrappedDemos: 1,
                 logger: _logger
             );
 
-            _output.WriteLine("🔥 Starting MIPRO Optimization...");
+            _output.WriteLine("🔥 Starting MIPRO (Bayesian) Optimization...");
 
             // 4. Run Optimization
             var optimizedProgram = await mipro.CompileAsync(student, trainset);
@@ -105,18 +104,10 @@ namespace RealExampleIntegrationTests.Optimization
             var demosCount = optimizedProgram.State.Demos.Count;
 
             _output.WriteLine("\n✅ Optimization Finished!");
-            _output.WriteLine($"Original Instruction: Convert the news into a telegram post.");
             _output.WriteLine($"Optimized Instruction: {newInstruction}");
             _output.WriteLine($"Selected Demos Count: {demosCount}");
 
             Assert.NotNull(newInstruction);
-            
-            // FIX: Вместо проверки на изменение инструкции, проверяем, что результат валидный.
-            // Если оптимизатор сработал хорошо, инструкция МОЖЕТ измениться, а может и нет, если исходная была хороша.
-            // Но мы ожидаем, что демо-примеры были подобраны.
-            // Assert.NotEqual("Convert the news into a telegram post.", newInstruction); 
-            
-            // Проверяем, что оптимизатор вернул рабочую программу
             Assert.True(newInstruction.Length > 0);
 
             // 6. Test Run
