@@ -5,10 +5,8 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-        
-        <!-- NuGet Metadata -->
         <PackageId>DSpyNet</PackageId>
-        <Version>0.1.0-alpha</Version>
+        <Version>0.2.0</Version>
         <Authors>Semen Aleksandrov</Authors>
         <Company>DSpyNet Contributors</Company>
         <Product>DSpyNet</Product>

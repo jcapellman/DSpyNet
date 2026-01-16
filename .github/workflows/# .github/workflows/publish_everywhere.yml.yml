@@ -1,13 +1,16 @@
-name: Publish to NuGet
+name: Publish to NuGet & GitHub
 
 on:
   release:
     types: [published]
-  workflow_dispatch: # Позволяет запустить вручную
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # Разрешаем запись в GitHub Packages
 
     steps:
     - name: Checkout code
@@ -24,25 +27,30 @@ jobs:
     - name: Build
       run: dotnet build DSpyNet/DSpyNet.csproj --configuration Release --no-restore
 
-    # Если есть тесты, их стоит прогнать перед публикацией
-    # - name: Test
-    #   run: dotnet test DSpyNet.Tests/DSpyNet.Tests.csproj --configuration Release --no-build
-
     - name: Pack
-      # Используем версию из тега релиза (например, v1.0.0 -> 1.0.0) если запуск по релизу
-      # Или берем из csproj, если запуск ручной
       run: |
         if [ "${{ github.event_name }}" = "release" ]; then
           VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}" # Удаляем префикс 'v' если есть
+          VERSION="${VERSION#v}"
+          echo "Packing version: $VERSION"
           dotnet pack DSpyNet/DSpyNet.csproj --configuration Release --no-build --output ./nupkgs /p:PackageVersion=$VERSION
         else
+          echo "Packing version from csproj"
           dotnet pack DSpyNet/DSpyNet.csproj --configuration Release --no-build --output ./nupkgs
         fi
 
-    - name: Push to NuGet
+    # Шаг 1: Публикация на глобальный NuGet.org
+    - name: Push to NuGet.org
       run: |
         dotnet nuget push ./nupkgs/*.nupkg \
-          --api-key ${{ secrets.NUGET_API_KEY }} \
           --source https://api.nuget.org/v3/index.json \
+          --api-key ${{ secrets.NUGET_API_KEY }} \
+          --skip-duplicate
+
+    # Шаг 2: Публикация в GitHub Packages
+    - name: Push to GitHub Packages
+      run: |
+        dotnet nuget push ./nupkgs/*.nupkg \
+          --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+          --api-key ${{ secrets.GITHUB_TOKEN }} \
           --skip-duplicate
