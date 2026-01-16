@@ -37,9 +37,10 @@ namespace DSpyNet.Examples
                 new BasicSentimentExample(appConfig, loggerFactory),
                 new CoTStartupExample(appConfig, loggerFactory),
                 new OptimizationExample(appConfig, loggerFactory),
-                // Новые примеры:
                 new OptimizationCoproExample(appConfig, loggerFactory),
-                new OptimizationMiproExample(appConfig, loggerFactory)
+                new OptimizationMiproExample(appConfig, loggerFactory),
+                // Новый пример сохранения
+                new PersistenceExample(appConfig, loggerFactory)
             };
 
             // 4. Меню
