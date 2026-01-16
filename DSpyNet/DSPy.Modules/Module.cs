@@ -1,12 +1,17 @@
-// DSPy.Modules/Module.cs
-
+// DSpyNet/DSPy.Modules/Module.cs
+using System;
+using System.IO;
+using System.Text.Json;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using DSpyNet.DSPy.Core;
 
 namespace DSpyNet.DSPy.Modules
 {
     /// <summary>
     /// Base class for all DSPy modules.
     /// Provides cloning capabilities for optimization and naming.
+    /// Provides Persistence (Save/Load).
     /// </summary>
     public abstract class Module
     {
@@ -17,32 +22,58 @@ namespace DSpyNet.DSPy.Modules
             _logger = logger;
         }
 
-        /// <summary>
-        /// Main execution entry point.
-        /// In Python this is `forward`, but in C# we use InvokeAsync.
-        /// </summary>
         public abstract Task<object> InvokeAsync(object input);
 
-        /// <summary>
-        /// Creates a deep copy of the module.
-        /// Crucial for optimizers (COPRO/MIPRO) to create candidates.
-        /// </summary>
         public virtual Module DeepClone()
         {
-            // Using JSON serialization as a robust way to deep clone module state (including SignatureStates)
-            // Limitations: Dependencies like ILogger or Kernel won't serialize well.
-            // In a real prod scenario, we might need a custom Clone method that re-injects dependencies.
-            
-            // For this implementation, we assume we recreate the module and copy state manually 
-            // if JSON fails, but let's try a serialize/deserialize approach for the state properties.
-            
-            // NOTE: Since we rely on DI for Kernel/Logger, full JSON clone is dangerous.
-            // We delegate to a template method that concrete classes can override, 
-            // or we use MemberwiseClone and manually clone the SignatureState.
-            
+            // Shallow copy memberwise, then deep copy specific mutable fields in subclasses
             var clone = (Module)this.MemberwiseClone();
-            // Subclasses must ensure their SignatureState is cloned.
             return clone;
         }
+
+        /// <summary>
+        /// Saves the module state (Instructions, Demos) to a JSON file.
+        /// </summary>
+        public virtual async Task SaveAsync(string path)
+        {
+            var options = new JsonSerializerOptions 
+            { 
+                WriteIndented = true,
+                IncludeFields = true
+            };
+            
+            // We serialize the whole object. 
+            // Note: Transient services like Kernel, ILogger, ILM will generally be ignored or null in JSON 
+            // if they are not properties, or we should mark them JsonIgnore.
+            // For Predict<T>, we care about the 'State' property.
+            
+            using var stream = File.Create(path);
+            await JsonSerializer.SerializeAsync(stream, this, this.GetType(), options);
+        }
+
+        /// <summary>
+        /// Loads state from a JSON file into the current instance.
+        /// </summary>
+        public virtual async Task LoadAsync(string path)
+        {
+            if (!File.Exists(path)) throw new FileNotFoundException("Module state file not found", path);
+
+            using var stream = File.OpenRead(path);
+            var options = new JsonSerializerOptions { IncludeFields = true };
+            
+            // We deserialize into a NEW instance to get the data, then copy relevant state to 'this'.
+            var loaded = await JsonSerializer.DeserializeAsync(stream, this.GetType(), options) as Module;
+            
+            if (loaded != null)
+            {
+                this.CopyStateFrom(loaded);
+            }
+        }
+
+        /// <summary>
+        /// Copies optimizable state (Instructions, Demos) from another module instance.
+        /// Subclasses must override to copy their specific state.
+        /// </summary>
+        protected abstract void CopyStateFrom(Module source);
     }
 }

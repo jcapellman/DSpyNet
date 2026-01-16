@@ -1,20 +1,28 @@
-// DSPy.Core/SignatureState.cs
+// DSpyNet/DSPy.Core/SignatureState.cs
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace DSpyNet.DSPy.Core
 {
     /// <summary>
     /// Mutable state for a predictor. This is what Optimizers modify.
-    /// It decouples the static C# class definition (Signature) from the dynamic prompt content.
     /// </summary>
     public class SignatureState
     {
-        public Signature Signature { get; }
+        // We don't serialize the Signature Type info directly to JSON easily without custom converters,
+        // but we assume the Module structure restores it. 
+        // We DO need to save Instruction and Demos.
+        [JsonIgnore]
+        public Signature Signature { get; private set; }
         
-        // Mutable Instruction (can be optimized)
         public string Instruction { get; set; }
-        
-        // Few-Shot Demonstrations (can be bootstrapped)
         public List<Example> Demos { get; set; }
+
+        // Constructor for JSON Deserialization
+        public SignatureState()
+        {
+            Demos = new List<Example>();
+        }
 
         public SignatureState(Signature signature)
         {
@@ -23,15 +31,23 @@ namespace DSpyNet.DSPy.Core
             Demos = new List<Example>();
         }
 
-        /// <summary>
-        /// Creates a deep clone of the state for optimization candidates.
-        /// </summary>
+        public void SetSignature(Signature signature)
+        {
+            Signature = signature;
+            // If Instruction wasn't loaded from JSON (is null), use default
+            if (string.IsNullOrEmpty(Instruction))
+            {
+                Instruction = signature.Instruction;
+            }
+        }
+
         public SignatureState Clone()
         {
             var clone = new SignatureState(Signature)
             {
                 Instruction = this.Instruction,
-                Demos = new List<Example>(this.Demos) // Shallow copy of examples is usually enough as Example is immutable-ish
+                // Shallow copy list of examples
+                Demos = new List<Example>(this.Demos) 
             };
             return clone;
         }

@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
 
 namespace DSpyNet.DSPy.Core
 {
@@ -11,26 +12,47 @@ namespace DSpyNet.DSPy.Core
     /// </summary>
     public class Example
     {
-        private readonly Dictionary<string, object> _store;
-        private readonly HashSet<string> _inputKeys;
+        // Public property for JSON Serialization
+        [JsonInclude]
+        public Dictionary<string, object> Store { get; private set; }
+        
+        [JsonInclude]
+        public HashSet<string> InputKeys { get; private set; }
+
+        [JsonConstructor]
+        public Example(Dictionary<string, object> store, HashSet<string> inputKeys)
+        {
+            Store = store ?? new Dictionary<string, object>();
+            InputKeys = inputKeys ?? new HashSet<string>();
+        }
 
         public Example(Dictionary<string, object> data = null, IEnumerable<string> inputKeys = null)
         {
-            _store = data != null ? new Dictionary<string, object>(data) : new Dictionary<string, object>();
-            _inputKeys = inputKeys != null ? new HashSet<string>(inputKeys) : new HashSet<string>();
+            Store = data != null ? new Dictionary<string, object>(data) : new Dictionary<string, object>();
+            InputKeys = inputKeys != null ? new HashSet<string>(inputKeys) : new HashSet<string>();
         }
 
         public object this[string key]
         {
-            get => _store.ContainsKey(key) ? _store[key] : null;
-            set => _store[key] = value;
+            get => Store.ContainsKey(key) ? Store[key] : null;
+            set => Store[key] = value;
         }
 
         public T Get<T>(string key)
         {
-            if (_store.TryGetValue(key, out var value))
+            if (Store.TryGetValue(key, out var value))
             {
                 if (value is T tVal) return tVal;
+                
+                // Handle JSON Element case (System.Text.Json default deserialization)
+                if (value is System.Text.Json.JsonElement element)
+                {
+                    if (typeof(T) == typeof(string)) return (T)(object)element.ToString();
+                    if (typeof(T) == typeof(int) && element.ValueKind == System.Text.Json.JsonValueKind.Number) return (T)(object)element.GetInt32();
+                    if (typeof(T) == typeof(double) && element.ValueKind == System.Text.Json.JsonValueKind.Number) return (T)(object)element.GetDouble();
+                    if (typeof(T) == typeof(bool)) return (T)(object)element.GetBoolean();
+                }
+
                 try
                 {
                     return (T)Convert.ChangeType(value, typeof(T));
@@ -43,85 +65,66 @@ namespace DSpyNet.DSPy.Core
             return default;
         }
 
-        /// <summary>
-        /// Creates a new Example with the specified key-value pair added/updated.
-        /// </summary>
         public Example With(string key, object value)
         {
-            var newStore = new Dictionary<string, object>(_store)
+            var newStore = new Dictionary<string, object>(Store)
             {
                 [key] = value
             };
-            // Preserve input keys
-            return new Example(newStore, _inputKeys);
+            return new Example(newStore, InputKeys);
         }
 
-        /// <summary>
-        /// Defines which keys are considered "inputs". Returns a NEW Example.
-        /// Analogous to dspy.Example.with_inputs()
-        /// </summary>
         public Example WithInputs(params string[] keys)
         {
-            return new Example(new Dictionary<string, object>(_store), keys);
+            return new Example(new Dictionary<string, object>(Store), keys);
         }
 
-        /// <summary>
-        /// Returns a new Example containing only the input fields.
-        /// </summary>
         public Example Inputs()
         {
-            if (_inputKeys == null || _inputKeys.Count == 0)
+            if (InputKeys == null || InputKeys.Count == 0)
             {
-                // If no inputs defined, return empty or full? 
-                // Python DSPy raises error if inputs not set when calling inputs(), 
-                // but usually returns what matches input_keys.
-                // For safety let's return keys that match _inputKeys
                 return new Example(new Dictionary<string, object>());
             }
 
-            var inputData = _store.Where(kv => _inputKeys.Contains(kv.Key))
+            var inputData = Store.Where(kv => InputKeys.Contains(kv.Key))
                                   .ToDictionary(k => k.Key, v => v.Value);
-            return new Example(inputData, _inputKeys);
+            return new Example(inputData, InputKeys);
         }
 
-        /// <summary>
-        /// Returns a new Example containing only the label fields (fields NOT in input_keys).
-        /// </summary>
         public Example Labels()
         {
-             var labelData = _store.Where(kv => !_inputKeys.Contains(kv.Key))
+             var labelData = Store.Where(kv => !InputKeys.Contains(kv.Key))
                                   .ToDictionary(k => k.Key, v => v.Value);
-            return new Example(labelData, new List<string>()); // Labels don't have inputs
+            return new Example(labelData, new List<string>());
         }
 
         public Example Combine(Example other)
         {
-            var newStore = new Dictionary<string, object>(_store);
+            var newStore = new Dictionary<string, object>(Store);
             if (other != null)
             {
-                foreach (var kvp in other._store)
+                foreach (var kvp in other.Store)
                 {
                     newStore[kvp.Key] = kvp.Value;
                 }
             }
-            return new Example(newStore, _inputKeys);
+            return new Example(newStore, InputKeys);
         }
 
         public Example Copy()
         {
-             return new Example(new Dictionary<string, object>(_store), new HashSet<string>(_inputKeys));
+             return new Example(new Dictionary<string, object>(Store), new HashSet<string>(InputKeys));
         }
 
-        public Dictionary<string, object> ToDictionary() => new Dictionary<string, object>(_store);
+        public Dictionary<string, object> ToDictionary() => new Dictionary<string, object>(Store);
 
         public override string ToString()
         {
-            var content = string.Join(", ", _store.Select(kv => $"{kv.Key}={kv.Value}"));
-            var inputs = _inputKeys.Count > 0 ? $" (inputs={string.Join(",", _inputKeys)})" : "";
+            var content = string.Join(", ", Store.Select(kv => $"{kv.Key}={kv.Value}"));
+            var inputs = InputKeys.Count > 0 ? $" (inputs={string.Join(",", InputKeys)})" : "";
             return $"Example({content}){inputs}";
         }
 
-        // Helper for tests to initialize easily
         public static Example From(params (string key, object value)[] pairs)
         {
             var dict = new Dictionary<string, object>();
@@ -135,6 +138,9 @@ namespace DSpyNet.DSPy.Core
     /// </summary>
     public class Prediction : Example
     {
+        [JsonConstructor]
+        public Prediction(Dictionary<string, object> store, HashSet<string> inputKeys) : base(store, inputKeys) { }
+
         public Prediction(Dictionary<string, object> data = null) : base(data) { }
     }
 }
