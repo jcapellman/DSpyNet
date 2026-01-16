@@ -1,0 +1,5 @@
+Report: 16.01.2026 11:31:02
+[UPDATED] DSpyNet\DSPy.Core\Attributes.cs
+[UPDATED] DSpyNet\DSPy.Core\Signature.cs
+[UPDATED] DSpyNet\DSPy.Modules\Predict.cs
+[UPDATED] DSpyNet\DSPy.Modules\ChainOfThought.cs
