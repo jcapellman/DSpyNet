@@ -11,6 +11,64 @@ Built on top of **Microsoft Semantic Kernel**.
 
 ---
 
+## 🌟 What is DSpyNet? (For .NET Developers)
+
+If you have never used DSPy, think of **DSpyNet** as **Entity Framework** but for Large Language Models (LLMs). Instead of concatenating raw SQL strings (prompts), you define classes and work with objects.
+
+Here is a breakdown of the core concepts:
+
+### 1. Predict (Basic Prediction)
+The most fundamental building block. It turns an LLM call into a typed method call.
+
+*   **The Problem (Classic Way):** You write huge strings: `$"Translate: {text}. Format: JSON..."`. Then you regex-parse the result, catch JSON exceptions, and retry. It's brittle.
+*   **The DSpyNet Way:** You define a Class (`Signature`). It's your contract. You say: "I have these inputs and these outputs." The framework handles the prompting and parsing.
+*   **Effect:** String Manipulation -> **Strongly Typed Logic**.
+
+### 2. Chain of Thought (Reasoning)
+A "magic" logic injection that improves accuracy. Models hallucinate less if they "think" first.
+
+*   **The Problem:** To make a model smart, you have to manually prompt: *"Let's think step by step"*, and then parse the mess of "Thoughts" vs "Final Answer".
+*   **The DSpyNet Way:** You just swap `Predict<T>` for `ChainOfThought<T>`. The library automatically rewrites the prompt, forces the model to generate a `Reasoning` field before the answer, and maps it cleanly to your object.
+*   **Effect:** Question -> Answer (Hallucinations) **vs** Question -> Logic -> Answer (High Accuracy).
+
+### 3. Bootstrap Few-Shot (Self-Learning)
+This is the killer feature. LLMs perform significantly better when shown 3-5 good examples (Few-Shot Prompting).
+
+*   **The Problem:** Where do you get examples? Hand-writing them into strings is tedious and hard to maintain.
+*   **The DSpyNet Way:** You provide a raw dataset (Inputs + Expected Outputs) and a metric. The **Optimizer**:
+    1.  Runs your data through the model ("Teacher").
+    2.  Checks if the model guessed correctly.
+    3.  If correct, it **records** the entire trace (Input -> Reasoning -> Output).
+    4.  It saves these "golden traces" and automatically injects them into the prompt for future calls.
+*   **Effect:** The bot learns from its own successful attempts. You don't write prompts; you write code and data.
+
+### 4. COPRO (Instruction Optimizer)
+Automated Prompt Engineering.
+
+*   **The Problem:** You wrote: *"Translate this text"*. It works okay. You change it to *"Translate professionally"*. Slightly better. You waste hours guessing which words the LLM likes.
+*   **The DSpyNet Way:** You task COPRO. It asks a powerful LLM (like GPT-4) to propose 10 variations of your instruction. It tests each one against your data/metric and picks the statistically best one.
+*   **Effect:** Guesswork -> **Data-Driven Optimization**. The AI writes its own instructions.
+
+### 5. MIPRO (Bayesian Hyperparameter Optimization)
+Heavy artillery for production.
+
+*   **The Problem:** You have 10 good examples and 5 different instructions. Which combination works best? Instruction A + Examples 1,2,3? Or Instruction B + Examples 8,9,10? The search space is huge.
+*   **The DSpyNet Way:** It uses mathematics (**Bayesian Optimization** via `SharpLearning`). It explores the search space intelligently, learning which combinations yield higher scores.
+*   **Effect:** You get a **mathematically optimal prompt** configuration for your specific task.
+
+### 🛠 C# Analogy Cheat Sheet
+
+| Concept | C# Analogy | Purpose |
+| :--- | :--- | :--- |
+| **Signature** | `Interface` / `DTO` | Defines the Data Contract (Inputs/Outputs). |
+| **Predict** | `Func<TInput, TOutput>` | Executes the contract via LLM. |
+| **ChainOfThought** | `Middleware` pipeline | Injects a "Thinking" step before execution. |
+| **BootstrapFewShot** | `Unit Tests` -> `Documentation` | Takes passing tests and turns them into documentation (examples) for the AI. |
+| **COPRO** | `A/B Testing` | Automatically rewrites code (instructions) until metrics improve. |
+| **MIPRO** | `AutoML` | Tunes hyperparameters to find the perfect system configuration. |
+
+---
+
 ## 📦 Installation
 
 Install the library via NuGet:
@@ -32,6 +90,7 @@ DSpyNet adapts the dynamic nature of Python's DSPy to the strongly-typed world o
 | **Modules** | `Predict`, `ChainOfThought` | `Predict<T>`, `ChainOfThought<T>` | ✅ Implemented |
 | **Optimizers (Basic)** | `BootstrapFewShot` | `BootstrapFewShot` (Teacher/Student) | ✅ Implemented |
 | **Optimizers (Adv)** | `MIPROv2` (Bayesian/Optuna) | `MIPRO` (Bayesian via SharpLearning) | ✅ Implemented |
+| **Prompt Engineering** | `COPRO`, `SignatureOptimizer` | `COPRO` (Coordinate Ascent) | ✅ Implemented |
 | **Metrics** | Python Functions | C# Delegates `Func<Example, Prediction, bool>` | ✅ Implemented |
 | **Tracing** | Global Context Manager | `AsyncLocal` Execution State | ✅ Implemented |
 | **Serialization** | Pickle / JSON | JSON State Serialization | ✅ Implemented |
@@ -138,6 +197,8 @@ The repository includes a `DSpyNet.Examples` console application that demonstrat
 1.  **Basic Sentiment Analysis**: Simple Input -> Output using `Predict`.
 2.  **Chain of Thought (Startup VC)**: Complex reasoning using `ChainOfThought` to evaluate startup pitches.
 3.  **Optimization (BootstrapFewShot)**: A self-improving Intent Classifier bot that learns from examples.
+4.  **Optimization (COPRO)**: Evolving instructions to detect Sarcasm.
+5.  **Optimization (MIPRO)**: Bayesian optimization of a RAG Query Rewriter using an LLM-as-a-Judge.
 
 ### How to run examples:
 1.  Clone the repository.
@@ -159,6 +220,18 @@ DSpyNet solves this by separating **Schema** (Type) from **State** (Data).
 *   **`SignatureState` (Object):** Holds the *actual* instruction text and the list of Few-Shot examples (Mutable).
 
 Optimizers (like MIPRO or Bootstrap) clone the `Module`, modify the `SignatureState` (changing instructions or adding demos), and return a new instance of the module.
+
+### Serialization
+You can save optimized modules to disk and load them in production:
+
+```csharp
+// Save optimized state
+await compiledProgram.SaveAsync("optimized_math_bot.json");
+
+// Load later
+var productionBot = new ChainOfThought<MathSignature>(lm);
+await productionBot.LoadAsync("optimized_math_bot.json");
+```
 
 ---
 
