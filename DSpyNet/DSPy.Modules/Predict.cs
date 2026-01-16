@@ -2,7 +2,6 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Microsoft.SemanticKernel;
 using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Execution;
 using System.Collections.Generic;
@@ -11,19 +10,21 @@ namespace DSpyNet.DSPy.Modules
 {
     /// <summary>
     /// The standard predictor module. 
-    /// Takes a Signature, builds a prompt via Adapter, calls Semantic Kernel, parses output.
+    /// Takes a Signature, builds a prompt via Adapter, calls the Language Model (ILM), parses output.
     /// </summary>
     /// <typeparam name="TSignature">The C# class defining the Input/Output schema.</typeparam>
     public class Predict<TSignature> : Module where TSignature : IDSpySignature, new()
     {
         // Changed to protected set to allow subclasses (like ChainOfThought) to set it during cloning
         public SignatureState State { get; protected set; }
-        protected readonly Kernel _kernel;
+        
+        // Changed from Kernel to ILM
+        protected readonly ILM _lm; 
         protected readonly DSPyAdapter _adapter;
 
-        public Predict(Kernel kernel, ILogger logger = null) : base(logger)
+        public Predict(ILM lm, ILogger logger = null) : base(logger)
         {
-            _kernel = kernel;
+            _lm = lm;
             _adapter = new DSPyAdapter();
             
             // Initialize State from the static Type definition
@@ -60,9 +61,8 @@ namespace DSpyNet.DSPy.Modules
             
             _logger?.LogDebug($"[DSPy Predict] Prompt generated:\n{prompt}");
 
-            // 2. Call LLM (Semantic Kernel)
-            var result = await _kernel.InvokePromptAsync(prompt);
-            var responseText = result.GetValue<string>();
+            // 2. Call LLM via Interface
+            var responseText = await _lm.GenerateAsync(prompt);
 
             _logger?.LogDebug($"[DSPy Predict] LLM Response:\n{responseText}");
 

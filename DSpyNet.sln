@@ -2,6 +2,10 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSpyNet", "DSpyNet\DSpyNet.csproj", "{D9C0410F-7A14-486C-9D65-363A3C270EB1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSpyNet.Tests", "DSpyNet.Tests\DSpyNet.Tests.csproj", "{37E60366-E219-4973-A302-3CC4C97DCB3D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DSpyNet.IntegrationTests", "DSpyNet.IntegrationTests\DSpyNet.IntegrationTests.csproj", "{01FE3824-E566-43D7-A38D-49FFCB69497D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +16,13 @@ Global
 		{D9C0410F-7A14-486C-9D65-363A3C270EB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D9C0410F-7A14-486C-9D65-363A3C270EB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D9C0410F-7A14-486C-9D65-363A3C270EB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{37E60366-E219-4973-A302-3CC4C97DCB3D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37E60366-E219-4973-A302-3CC4C97DCB3D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37E60366-E219-4973-A302-3CC4C97DCB3D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37E60366-E219-4973-A302-3CC4C97DCB3D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01FE3824-E566-43D7-A38D-49FFCB69497D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01FE3824-E566-43D7-A38D-49FFCB69497D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01FE3824-E566-43D7-A38D-49FFCB69497D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01FE3824-E566-43D7-A38D-49FFCB69497D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
