@@ -6,6 +6,19 @@ It allows you to **program** language models rather than prompt them. Instead of
 
 Built on top of **Microsoft Semantic Kernel**.
 
+[![NuGet](https://img.shields.io/nuget/v/DSpyNet.svg)](https://www.nuget.org/packages/DSpyNet)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+---
+
+## 📦 Installation
+
+Install the library via NuGet:
+
+```bash
+dotnet add package DSpyNet
+```
+
 ---
 
 ## 🚀 Features & Comparison
@@ -15,33 +28,21 @@ DSpyNet adapts the dynamic nature of Python's DSPy to the strongly-typed world o
 | Feature | Original DSPy (Python) | DSpyNet (C#) | Status |
 | :--- | :--- | :--- | :--- |
 | **Core Abstraction** | Declarative Pydantic Models | C# Classes with Attributes (`[DspInput]`) | ✅ Implemented |
-| **LLM Backend** | `dspy.LM` (Custom/LiteLLM) | `Microsoft.SemanticKernel` (ILM Interface) | ✅ Implemented |
-| **Basic Modules** | `Predict`, `ChainOfThought` | `Predict<T>`, `ChainOfThought<T>` | ✅ Implemented |
-| **Complex Modules** | `ReAct`, `ProgramOfThought` | Not yet implemented | ❌ Planned |
-| **Optimizers** | `BootstrapFewShot` | `BootstrapFewShot` (Teacher/Student) | ✅ Implemented |
-| **Advanced Optimizers** | `MIPROv2` (Bayesian/Optuna) | `MIPRO` (Random Search Strategy) | ⚠️ Partial |
-| **Prompt Engineering** | `COPRO`, `SignatureOptimizer` | Not yet implemented | ❌ Planned |
+| **LLM Backend** | `dspy.LM` (LiteLLM) | `Microsoft.SemanticKernel` (wrapped in `ILM`) | ✅ Implemented |
+| **Modules** | `Predict`, `ChainOfThought` | `Predict<T>`, `ChainOfThought<T>` | ✅ Implemented |
+| **Optimizers (Basic)** | `BootstrapFewShot` | `BootstrapFewShot` (Teacher/Student) | ✅ Implemented |
+| **Optimizers (Adv)** | `MIPROv2` (Bayesian/Optuna) | `MIPRO` (Bayesian via SharpLearning) | ✅ Implemented |
 | **Metrics** | Python Functions | C# Delegates `Func<Example, Prediction, bool>` | ✅ Implemented |
 | **Tracing** | Global Context Manager | `AsyncLocal` Execution State | ✅ Implemented |
 | **Serialization** | Pickle / JSON | JSON State Serialization | ✅ Implemented |
-
----
-
-## 📦 Installation
-
-*Currently, this is a source-only library. Include the `DSpyNet` project in your solution.*
-
-Dependencies:
-*   .NET 8.0+
-*   Microsoft.SemanticKernel
-*   Microsoft.Extensions.Logging
+| **Agents** | `ReAct` | Not yet implemented | 🚧 Planned |
 
 ---
 
 ## ⚡ Quick Start
 
 ### 1. Define a Signature
-Instead of writing a prompt text, define what you need using a C# class.
+Instead of writing a prompt text, define what you need using a C# class and attributes.
 
 ```csharp
 using DSpyNet.DSPy.Core;
@@ -61,14 +62,17 @@ public class TranslationSignature : IDSpySignature
 ```
 
 ### 2. Configure Semantic Kernel
-DSpyNet wraps Semantic Kernel to communicate with LLMs.
+DSpyNet wraps Semantic Kernel to communicate with LLMs (OpenAI, Azure, HuggingFace, etc.).
 
 ```csharp
+using Microsoft.SemanticKernel;
+using DSpyNet.DSPy.Clients;
+
 var builder = Kernel.CreateBuilder();
 builder.AddOpenAIChatCompletion("gpt-4o", "YOUR_API_KEY");
 var kernel = builder.Build();
 
-// Convert to DSpy ILM
+// Convert Kernel to DSpy ILM (Language Model interface)
 var lm = kernel.ToDSpyLM();
 ```
 
@@ -111,12 +115,13 @@ Metric exactMatch = (gold, pred) =>
 var student = new ChainOfThought<QASignature>(lm);
 
 // 4. Compile (Optimize)
+// This runs the pipeline, checks results, and "learns" from successes
 var optimizer = new BootstrapFewShot<ChainOfThought<QASignature>>(
     metric: exactMatch, 
     maxBootstrappedDemos: 4
 );
 
-// This returns a NEW module with optimized prompts and demos embedded
+// Returns a NEW module with optimized prompts and demos embedded
 var compiledProgram = await optimizer.CompileAsync(student, trainset);
 
 // 5. Run Optimized Program
@@ -125,9 +130,28 @@ var result = await compiledProgram.InvokeAsync(new { Question = "What is 5 + 5?"
 
 ---
 
-## 🏗 Architecture Details
+## 🎮 Interactive Examples (Showcase)
 
-### Mutability in a Static Language
+The repository includes a `DSpyNet.Examples` console application that demonstrates real-world usage scenarios.
+
+### Included Scenarios:
+1.  **Basic Sentiment Analysis**: Simple Input -> Output using `Predict`.
+2.  **Chain of Thought (Startup VC)**: Complex reasoning using `ChainOfThought` to evaluate startup pitches.
+3.  **Optimization (BootstrapFewShot)**: A self-improving Intent Classifier bot that learns from examples.
+
+### How to run examples:
+1.  Clone the repository.
+2.  Navigate to `DSpyNet.Examples`.
+3.  Edit `appsettings.json` to include your API Key (OpenAI, RouterAI, or local LLM).
+4.  Run:
+    ```bash
+    dotnet run
+    ```
+
+---
+
+## 🏗 Architecture & Mutability
+
 In Python, DSPy modifies classes on the fly. In C#, classes are static. 
 DSpyNet solves this by separating **Schema** (Type) from **State** (Data).
 
@@ -136,31 +160,8 @@ DSpyNet solves this by separating **Schema** (Type) from **State** (Data).
 
 Optimizers (like MIPRO or Bootstrap) clone the `Module`, modify the `SignatureState` (changing instructions or adding demos), and return a new instance of the module.
 
-### Serialization
-You can save optimized modules to disk and load them in production:
-
-```csharp
-// Save optimized state
-await compiledProgram.SaveAsync("optimized_math_bot.json");
-
-// Load later
-var productionBot = new ChainOfThought<MathSignature>(lm);
-await productionBot.LoadAsync("optimized_math_bot.json");
-```
-
----
-
-## 🧪 Integration Tests
-
-The repository includes a `RealExampleIntegrationTests` project. It contains examples of:
-*   **News Generation:** Generating social media posts from raw text.
-*   **Content Guard:** Analyzing sentiment and safety using Chain of Thought.
-*   **Intent Classification:** Optimizing a classification task using `BootstrapFewShot`.
-
-To run them, you need to set up your API keys (e.g., OpenAI or RouterAI) in the test base class.
-
 ---
 
 ## 🤝 Contributing
 
-This is an active port. Missing features (ReAct, Code Execution, Advanced Bayesian Optimization) are planned. PRs are welcome!
+This is an active port. PRs are welcome!
