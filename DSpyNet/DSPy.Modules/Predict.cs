@@ -13,9 +13,12 @@ namespace DSpyNet.DSPy.Modules
     /// The standard predictor module. 
     /// Takes a Signature, builds a prompt via Adapter, calls Semantic Kernel, parses output.
     /// </summary>
+    /// <typeparam name="TSignature">The C# class defining the Input/Output schema.</typeparam>
     public class Predict<TSignature> : Module, IPredictor where TSignature : IDSpySignature, new()
     {
-        // Changed to protected set to allow subclasses (like ChainOfThought) to set it during cloning
+        // Added [JsonInclude] to allow System.Text.Json to populate this property 
+        // during deserialization despite the protected setter.
+        [JsonInclude]
         public SignatureState State { get; protected set; }
         
         [JsonIgnore]
