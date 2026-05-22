@@ -77,5 +77,42 @@ namespace DSpyNet.DSPy.Evaluation
 
             return score;
         }
+
+        /// <summary>
+        /// Runs the module over the dataset and returns per-example scores in [0,1] using a FeedbackMetric.
+        /// Each slot in the returned array corresponds to <c>dataset[i]</c>. Exceptions yield <paramref name="failureScore"/>.
+        /// </summary>
+        public async Task<double[]> EvaluatePerExampleAsync(
+            Module program,
+            List<Example> dataset,
+            FeedbackMetric metric,
+            double failureScore = 0.0)
+        {
+            var scores = new double[dataset.Count];
+            var options = new ParallelOptions { MaxDegreeOfParallelism = _maxDegreeOfParallelism };
+            var indexed = dataset.Select((ex, i) => (ex, i));
+
+            _logger?.LogInformation($"Starting per-example evaluation on {dataset.Count} examples...");
+
+            await Parallel.ForEachAsync(indexed, options, async (item, token) =>
+            {
+                try
+                {
+                    var predictionObj = await program.InvokeAsync(item.ex);
+                    if (predictionObj is not Prediction p)
+                        throw new InvalidCastException("Program did not return a Prediction object.");
+
+                    var result = metric(item.ex, p, null);
+                    scores[item.i] = result.Score;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, $"Error evaluating example {item.i}.");
+                    scores[item.i] = failureScore;
+                }
+            });
+
+            return scores;
+        }
     }
 }
