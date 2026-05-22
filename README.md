@@ -56,6 +56,13 @@ Heavy artillery for production.
 *   **The DSpyNet Way:** It uses mathematics (**Bayesian Optimization** via `SharpLearning`). It explores the search space intelligently, learning which combinations yield higher scores.
 *   **Effect:** You get a **mathematically optimal prompt** configuration for your specific task.
 
+### 6. GEPA (Reflective Prompt Evolution)
+Self-correcting prompts that learn from their own mistakes.
+
+*   **The Problem:** MIPRO can search a fixed space of instruction variants, but it can't actually *understand* why a prompt failed. If your bot misclassifies "elevator stuck, person trapped" as low-urgency, you want the next prompt to specifically address that failure mode.
+*   **The DSpyNet Way:** GEPA runs your program, captures the failures, and asks a powerful **reflection LLM** to read the traces + per-predictor feedback and propose a better instruction. Successful variants enter a **Pareto frontier** (best at >=1 training example) so the optimizer explores diverse strategies instead of collapsing to one.
+*   **Effect:** Static prompts → **prompts that evolve by analyzing their own failures**, often with much smaller training budgets than MIPRO.
+
 ### 🛠 C# Analogy Cheat Sheet
 
 | Concept | C# Analogy | Purpose |
@@ -66,6 +73,7 @@ Heavy artillery for production.
 | **BootstrapFewShot** | `Unit Tests` -> `Documentation` | Takes passing tests and turns them into documentation (examples) for the AI. |
 | **COPRO** | `A/B Testing` | Automatically rewrites code (instructions) until metrics improve. |
 | **MIPRO** | `AutoML` | Tunes hyperparameters to find the perfect system configuration. |
+| **GEPA** | `Code Review with Self-Healing` | Reflects on failures, rewrites the prompt, keeps only what improves things. |
 
 ---
 
@@ -90,8 +98,9 @@ DSpyNet adapts the dynamic nature of Python's DSPy to the strongly-typed world o
 | **Modules** | `Predict`, `ChainOfThought` | `Predict<T>`, `ChainOfThought<T>` | ✅ Implemented |
 | **Optimizers (Basic)** | `BootstrapFewShot` | `BootstrapFewShot` (Teacher/Student) | ✅ Implemented |
 | **Optimizers (Adv)** | `MIPROv2` (Bayesian/Optuna) | `MIPRO` (Bayesian via SharpLearning) | ✅ Implemented |
+| **Reflective Opt** | `GEPA` (Reflective Prompt Evolution) | `GEPA<TModule>` (Pareto pool + reflection LM) | ✅ Implemented |
 | **Prompt Engineering** | `COPRO`, `SignatureOptimizer` | `COPRO` (Coordinate Ascent) | ✅ Implemented |
-| **Metrics** | Python Functions | C# Delegates `Func<Example, Prediction, bool>` | ✅ Implemented |
+| **Metrics** | Python Functions | C# Delegates `Metric` (bool) and `FeedbackMetric` (score + feedback for GEPA) | ✅ Implemented |
 | **Tracing** | Global Context Manager | `AsyncLocal` Execution State | ✅ Implemented |
 | **Serialization** | Pickle / JSON | JSON State Serialization | ✅ Implemented |
 | **Agents** | `ReAct` | Not yet implemented | 🚧 Planned |
@@ -199,6 +208,7 @@ The repository includes a `DSpyNet.Examples` console application that demonstrat
 3.  **Optimization (BootstrapFewShot)**: A self-improving Intent Classifier bot that learns from examples.
 4.  **Optimization (COPRO)**: Evolving instructions to detect Sarcasm.
 5.  **Optimization (MIPRO)**: Bayesian optimization of a RAG Query Rewriter using an LLM-as-a-Judge.
+6.  **Optimization (GEPA)**: Reflective prompt evolution on a multi-predictor Facility Support Analyzer (urgency / sentiment / categories).
 
 ### How to run examples:
 1.  Clone the repository.
