@@ -39,6 +39,7 @@ namespace DSpyNet.Examples
                 new OptimizationExample(appConfig, loggerFactory),
                 new OptimizationCoproExample(appConfig, loggerFactory),
                 new OptimizationMiproExample(appConfig, loggerFactory),
+                new OptimizationGepaExample(appConfig, loggerFactory),
                 // Новый пример сохранения
                 new PersistenceExample(appConfig, loggerFactory)
             };
