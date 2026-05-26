@@ -95,10 +95,12 @@ namespace DSpyNet.DSPy.Modules
             {
                 ExecutionState.AddEntry(new TraceEntry
                 {
+                    Predictor = this,
                     SignatureState = State.Clone(), // Snapshot state at this moment
                     Inputs = input,
                     Outputs = prediction,
-                    PromptUsed = prompt
+                    PromptUsed = prompt,
+                    RawResponse = responseText
                 });
             }
 
