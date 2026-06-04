@@ -48,11 +48,11 @@ namespace RealExampleIntegrationTests.Optimization
             CategoriesPredict = new Predict<GepaCategoriesSig>(lm, logger);
         }
 
-        public override async Task<object> InvokeAsync(object input)
+        public override async Task<object> InvokeAsync(object input, CancellationToken cancellationToken = default)
         {
-            var u = (Prediction)await UrgencyPredict.InvokeAsync(input);
-            var s = (Prediction)await SentimentPredict.InvokeAsync(input);
-            var c = (Prediction)await CategoriesPredict.InvokeAsync(input);
+            var u = (Prediction)await UrgencyPredict.InvokeAsync(input, cancellationToken);
+            var s = (Prediction)await SentimentPredict.InvokeAsync(input, cancellationToken);
+            var c = (Prediction)await CategoriesPredict.InvokeAsync(input, cancellationToken);
             return new Prediction(new Dictionary<string, object>
             {
                 ["Urgency"] = u.Get<string>("Urgency") ?? "",

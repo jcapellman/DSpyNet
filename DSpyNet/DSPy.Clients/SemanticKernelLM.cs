@@ -1,5 +1,6 @@
 // DSpyNet/DSPy.Clients/SemanticKernelLM.cs
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using DSpyNet.DSPy.Core;
@@ -20,12 +21,12 @@ namespace DSpyNet.DSPy.Clients
             _defaultSettings = defaultSettings;
         }
 
-        public async Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null)
+        public async Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null, CancellationToken cancellationToken = default)
         {
             // Here we could merge kwargs with _defaultSettings if needed.
             // For simplicity, we use the prompt directly.
-            
-            var result = await _kernel.InvokePromptAsync(prompt, new KernelArguments(_defaultSettings));
+
+            var result = await _kernel.InvokePromptAsync(prompt, new KernelArguments(_defaultSettings), cancellationToken: cancellationToken);
             return result.GetValue<string>() ?? string.Empty;
         }
     }

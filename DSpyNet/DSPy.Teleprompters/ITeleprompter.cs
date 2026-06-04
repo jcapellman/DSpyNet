@@ -1,5 +1,6 @@
 // DSPy.Teleprompters/ITeleprompter.cs
 
+using System.Threading;
 using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Modules;
 
@@ -11,6 +12,6 @@ namespace DSpyNet.DSPy.Teleprompters
     /// </summary>
     public interface ITeleprompter<TModule> where TModule : Module
     {
-        Task<TModule> CompileAsync(TModule student, List<Example> trainset);
+        Task<TModule> CompileAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken = default);
     }
 }

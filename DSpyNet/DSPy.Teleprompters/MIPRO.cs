@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -41,12 +42,12 @@ namespace DSpyNet.DSPy.Teleprompters
             _evaluator = new Evaluator(logger);
         }
 
-        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset)
+        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Starting MIPRO (Bayesian) Optimization...");
 
             // 1. Generate Candidates (Instructions)
-            var instructionCandidates = await GenerateInstructionsAsync(student, trainset);
+            var instructionCandidates = await GenerateInstructionsAsync(student, trainset, cancellationToken);
             instructionCandidates.Insert(0, GetCurrentInstruction(student)); // Add baseline
 
             // 2. Generate Demo Set Candidates
@@ -73,6 +74,8 @@ namespace DSpyNet.DSPy.Teleprompters
             // SharpLearning работает синхронно, поэтому внутри вызываем .GetAwaiter().GetResult().
             Func<double[], OptimizerResult> objective = (parameterValues) =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 try 
                 {
                     // Клонируем модуль для эксперимента
@@ -85,7 +88,7 @@ namespace DSpyNet.DSPy.Teleprompters
                         // PRODUCTION SAFEGUARD: 
                         // Оптимизатор может вернуть double (например, 2.999), нам нужен int индекс.
                         // Используем Round и Clamp, чтобы не выйти за границы массива.
-                        
+
                         double instrVal = parameterValues[paramIdx++];
                         double demoVal = parameterValues[paramIdx++];
 
@@ -103,7 +106,7 @@ namespace DSpyNet.DSPy.Teleprompters
 
                     // Оценка
                     // Используем весь trainset. В продакшене тут лучше использовать Validation Set.
-                    double score = _evaluator.EvaluateAsync(candidate, trainset, _metric).GetAwaiter().GetResult();
+                    double score = _evaluator.EvaluateAsync(candidate, trainset, _metric, cancellationToken).GetAwaiter().GetResult();
 
                     // Конвертируем Score (чем больше, тем лучше) в Error (чем меньше, тем лучше)
                     // Предполагаем, что score в процентах (0-100)
@@ -123,10 +126,10 @@ namespace DSpyNet.DSPy.Teleprompters
 
             // 4. Run Optimization
             _logger?.LogInformation($"Running Bayesian Optimization for {_numEvaluations} iterations...");
-            
+
             // Исправлено: параметр seed и имя iterations
             var optimizer = new BayesianOptimizer(parameters: parameters.ToArray(), iterations: _numEvaluations, seed: 42);
-            
+
             // Исправлено: Optimize возвращает массив результатов, берем лучший (с минимальной ошибкой)
             OptimizerResult[] results = optimizer.Optimize(objective);
             OptimizerResult bestResult = results.OrderBy(r => r.Error).First();
@@ -136,7 +139,7 @@ namespace DSpyNet.DSPy.Teleprompters
             // 5. Apply Best Parameters to Result Module
             var bestModule = (TModule)student.DeepClone();
             var bestPredictors = bestModule.NamedPredictors();
-            
+
             int pIdx = 0;
             for (int i = 0; i < bestPredictors.Count; i++)
             {
@@ -149,18 +152,18 @@ namespace DSpyNet.DSPy.Teleprompters
 
                 bestPredictors[i].State.Instruction = instructionCandidates[instrIdx];
                 bestPredictors[i].State.Demos = new List<Example>(demoSetCandidates[demoIdx]);
-                
+
                 _logger?.LogInformation($"  Predictor {i}: Winner Instr #{instrIdx}, Demos #{demoIdx}");
             }
 
             return bestModule;
         }
 
-        private async Task<List<string>> GenerateInstructionsAsync(TModule student, List<Example> trainset)
+        private async Task<List<string>> GenerateInstructionsAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken)
         {
             var candidates = new List<string>();
             var generator = new Predict<GenerateInstructionSignature>(_promptModel);
-            
+
             // Берем 3 примера для контекста мета-промпта
             var summaryExamples = trainset.Take(3).Select(ex => ex.ToString());
             var examplesStr = string.Join("\n", summaryExamples);
@@ -168,6 +171,8 @@ namespace DSpyNet.DSPy.Teleprompters
 
             for (int i = 0; i < _numCandidates; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 try 
                 {
                     // В реальном сценарии здесь нужно увеличивать Temperature у модели для разнообразия,
@@ -175,14 +180,14 @@ namespace DSpyNet.DSPy.Teleprompters
                     var result = await generator.InvokeAsync(new { 
                         BasicInstruction = basicInstr,
                         Examples = examplesStr
-                    }) as Prediction;
+                    }, cancellationToken) as Prediction;
 
                     if (result != null)
                     {
                         var proposed = result.Get<string>("ProposedInstruction");
                         // Очистка от кавычек и мусора, если модель выдала лишнее
                         proposed = proposed?.Trim().Trim('"').Trim('`');
-                        
+
                         if (!string.IsNullOrWhiteSpace(proposed))
                         {
                             candidates.Add(proposed);

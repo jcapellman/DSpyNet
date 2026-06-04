@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -54,7 +55,7 @@ namespace DSpyNet.DSPy.Teleprompters
             _rng = new Random(_opts.Seed);
         }
 
-        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset)
+        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Starting GEPA (Reflective Prompt Evolution)...");
 
@@ -69,7 +70,7 @@ namespace DSpyNet.DSPy.Teleprompters
                 return seed;
             }
 
-            var seedScores = await _evaluator.EvaluatePerExampleAsync(seed, valset, _metric, _opts.FailureScore);
+            var seedScores = await _evaluator.EvaluatePerExampleAsync(seed, valset, _metric, _opts.FailureScore, cancellationToken: cancellationToken);
             var pool = new List<Candidate> { new Candidate(seed, seedScores, predictorCursor: 0) };
 
             int budget = _opts.MaxMetricCalls ?? AutoBudget(_opts.Auto, valset.Count, seedNamed.Count);
@@ -80,12 +81,14 @@ namespace DSpyNet.DSPy.Teleprompters
             int consecutiveNoOpReflective = 0;
             while (metricUsed < budget)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 iter++;
                 bool tryMerge = _opts.UseMerge && _opts.MergeEvery > 0 && iter % _opts.MergeEvery == 0;
 
                 StepResult step = tryMerge
-                    ? await TryMergeAsync(pool, valset, budget - metricUsed)
-                    : await TryReflectiveStepAsync(pool, trainMini, valset, budget - metricUsed);
+                    ? await TryMergeAsync(pool, valset, budget - metricUsed, cancellationToken)
+                    : await TryReflectiveStepAsync(pool, trainMini, valset, budget - metricUsed, cancellationToken);
 
                 metricUsed += step.Spent;
                 if (step.Accepted != null)
@@ -107,7 +110,7 @@ namespace DSpyNet.DSPy.Teleprompters
 
         // Reflective step: pick parent + predictor, collect traces, propose, gate on minibatch, eval on valset.
         private async Task<StepResult> TryReflectiveStepAsync(
-            List<Candidate> pool, List<Example> trainMini, List<Example> valset, int budgetRemaining)
+            List<Candidate> pool, List<Example> trainMini, List<Example> valset, int budgetRemaining, CancellationToken cancellationToken)
         {
             var parent = SelectParent(pool);
             var named = parent.Program.NamedPredictorsWithNames();
@@ -119,7 +122,7 @@ namespace DSpyNet.DSPy.Teleprompters
             if (batch.Count == 0 || batch.Count > budgetRemaining) return new StepResult(0, null);
 
             var (traces, feedback, batchScores, batchSucceeded) =
-                await CollectReflectionContextAsync(parent.Program, batch, predName, targetPred);
+                await CollectReflectionContextAsync(parent.Program, batch, predName, targetPred, cancellationToken);
             int spent = batch.Count;
 
             if (batchSucceeded && batchScores.All(s => s + 1e-9 >= _opts.PerfectScore))
@@ -128,7 +131,7 @@ namespace DSpyNet.DSPy.Teleprompters
                 return new StepResult(spent, null);
             }
 
-            var newInstruction = await ProposeInstructionAsync(targetPred.State.Instruction, predName, traces, feedback);
+            var newInstruction = await ProposeInstructionAsync(targetPred.State.Instruction, predName, traces, feedback, cancellationToken);
             if (string.IsNullOrWhiteSpace(newInstruction) || newInstruction == targetPred.State.Instruction)
             {
                 return new StepResult(spent, null);
@@ -142,7 +145,7 @@ namespace DSpyNet.DSPy.Teleprompters
             // Strict-improvement gate: reject children that don't beat the parent on their own training batch.
             if (spent + batch.Count > budgetRemaining) return new StepResult(spent, null);
             double parentBatchScore = batchScores.Average();
-            double childBatchScore = await ScoreOnBatchAsync(child, batch);
+            double childBatchScore = await ScoreOnBatchAsync(child, batch, cancellationToken);
             spent += batch.Count;
 
             if (childBatchScore <= parentBatchScore + 1e-9)
@@ -157,14 +160,14 @@ namespace DSpyNet.DSPy.Teleprompters
                 return new StepResult(spent, null);
             }
 
-            var childScores = await _evaluator.EvaluatePerExampleAsync(child, valset, _metric, _opts.FailureScore);
+            var childScores = await _evaluator.EvaluatePerExampleAsync(child, valset, _metric, _opts.FailureScore, cancellationToken: cancellationToken);
             spent += valset.Count;
 
             return new StepResult(spent, new Candidate(child, childScores, parent.PredictorCursor + 1));
         }
 
         // Merge proposer: pick two non-dominated parents and mix their predictor instructions component-wise.
-        private async Task<StepResult> TryMergeAsync(List<Candidate> pool, List<Example> valset, int budgetRemaining)
+        private async Task<StepResult> TryMergeAsync(List<Candidate> pool, List<Example> valset, int budgetRemaining, CancellationToken cancellationToken)
         {
             var front = NonDominated(pool);
             if (front.Count < 2 || valset.Count > budgetRemaining) return new StepResult(0, null);
@@ -188,7 +191,7 @@ namespace DSpyNet.DSPy.Teleprompters
             }
             if (!changedAny) return new StepResult(0, null);
 
-            var childScores = await _evaluator.EvaluatePerExampleAsync(child, valset, _metric, _opts.FailureScore);
+            var childScores = await _evaluator.EvaluatePerExampleAsync(child, valset, _metric, _opts.FailureScore, cancellationToken: cancellationToken);
             int cursor = Math.Max(a.PredictorCursor, b.PredictorCursor);
             return new StepResult(valset.Count, new Candidate(child, childScores, cursor));
         }
@@ -200,7 +203,7 @@ namespace DSpyNet.DSPy.Teleprompters
             public StepResult(int spent, Candidate accepted) { Spent = spent; Accepted = accepted; }
         }
 
-        private async Task<string> ProposeInstructionAsync(string current, string predName, string traces, string feedback)
+        private async Task<string> ProposeInstructionAsync(string current, string predName, string traces, string feedback, CancellationToken cancellationToken)
         {
             try
             {
@@ -211,7 +214,7 @@ namespace DSpyNet.DSPy.Teleprompters
                     PredictorName = predName,
                     Traces = traces,
                     Feedback = feedback
-                }) as Prediction;
+                }, cancellationToken) as Prediction;
 
                 var proposed = ExtractInstruction(result?.Get<string>("ImprovedInstruction"));
                 return string.IsNullOrWhiteSpace(proposed) ? null : proposed;
@@ -253,7 +256,7 @@ namespace DSpyNet.DSPy.Teleprompters
 
         // Per-example trace + feedback for the target predictor, attributed by identity (not signature type).
         private async Task<(string Traces, string Feedback, double[] Scores, bool AllSucceeded)>
-            CollectReflectionContextAsync(TModule program, List<Example> batch, string predName, IPredictor targetPred)
+            CollectReflectionContextAsync(TModule program, List<Example> batch, string predName, IPredictor targetPred, CancellationToken cancellationToken)
         {
             var sb = new StringBuilder();
             var scores = new double[batch.Count];
@@ -262,11 +265,13 @@ namespace DSpyNet.DSPy.Teleprompters
             // Sequential keeps AsyncLocal trace context coherent per example.
             for (int i = 0; i < batch.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var ex = batch[i];
                 ExecutionState.BeginTrace();
                 Prediction pred = null;
                 Exception runError = null;
-                try { pred = (Prediction)await program.InvokeAsync(ex); }
+                try { pred = (Prediction)await program.InvokeAsync(ex, cancellationToken); }
                 catch (Exception err) { runError = err; }
                 var trace = ExecutionState.EndTrace() ?? new List<TraceEntry>();
 
@@ -324,9 +329,9 @@ namespace DSpyNet.DSPy.Teleprompters
             return (sb.ToString(), $"Per-example scores: {string.Join(", ", scores.Select(s => s.ToString("F2")))}", scores, allSucceeded);
         }
 
-        private async Task<double> ScoreOnBatchAsync(TModule program, List<Example> batch)
+        private async Task<double> ScoreOnBatchAsync(TModule program, List<Example> batch, CancellationToken cancellationToken)
         {
-            var scores = await _evaluator.EvaluatePerExampleAsync(program, batch, _metric, _opts.FailureScore);
+            var scores = await _evaluator.EvaluatePerExampleAsync(program, batch, _metric, _opts.FailureScore, cancellationToken: cancellationToken);
             return scores.Length == 0 ? 0.0 : scores.Average();
         }
 

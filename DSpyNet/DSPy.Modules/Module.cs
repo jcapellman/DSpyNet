@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -22,7 +23,7 @@ namespace DSpyNet.DSPy.Modules
             _logger = logger;
         }
 
-        public abstract Task<object> InvokeAsync(object input);
+        public abstract Task<object> InvokeAsync(object input, CancellationToken cancellationToken = default);
 
         public virtual Module DeepClone()
         {
@@ -34,36 +35,36 @@ namespace DSpyNet.DSPy.Modules
         /// <summary>
         /// Saves the module state (Instructions, Demos) to a JSON file.
         /// </summary>
-        public virtual async Task SaveAsync(string path)
+        public virtual async Task SaveAsync(string path, CancellationToken cancellationToken = default)
         {
             var options = new JsonSerializerOptions 
             { 
                 WriteIndented = true,
                 IncludeFields = true
             };
-            
+
             // We serialize the whole object. 
             // Note: Transient services like Kernel, ILogger, ILM will generally be ignored or null in JSON 
             // if they are not properties, or we should mark them JsonIgnore.
             // For Predict<T>, we care about the 'State' property.
-            
+
             using var stream = File.Create(path);
-            await JsonSerializer.SerializeAsync(stream, this, this.GetType(), options);
+            await JsonSerializer.SerializeAsync(stream, this, this.GetType(), options, cancellationToken);
         }
 
         /// <summary>
         /// Loads state from a JSON file into the current instance.
         /// </summary>
-        public virtual async Task LoadAsync(string path)
+        public virtual async Task LoadAsync(string path, CancellationToken cancellationToken = default)
         {
             if (!File.Exists(path)) throw new FileNotFoundException("Module state file not found", path);
 
             using var stream = File.OpenRead(path);
             var options = new JsonSerializerOptions { IncludeFields = true };
-            
+
             // We deserialize into a NEW instance to get the data, then copy relevant state to 'this'.
-            var loaded = await JsonSerializer.DeserializeAsync(stream, this.GetType(), options) as Module;
-            
+            var loaded = await JsonSerializer.DeserializeAsync(stream, this.GetType(), options, cancellationToken) as Module;
+
             if (loaded != null)
             {
                 this.CopyStateFrom(loaded);

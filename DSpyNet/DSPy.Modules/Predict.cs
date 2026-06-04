@@ -1,5 +1,6 @@
 // DSpyNet/DSPy.Modules/Predict.cs
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -20,10 +21,10 @@ namespace DSpyNet.DSPy.Modules
         // during deserialization despite the protected setter.
         [JsonInclude]
         public SignatureState State { get; protected set; }
-        
+
         [JsonIgnore]
         protected ILM _lm; 
-        
+
         [JsonIgnore]
         protected readonly DSPyAdapter _adapter;
 
@@ -39,7 +40,7 @@ namespace DSpyNet.DSPy.Modules
         {
             _lm = lm;
             _adapter = new DSPyAdapter();
-            
+
             // Initialize State from the static Type definition
             var signature = new Signature(typeof(TSignature));
             State = new SignatureState(signature);
@@ -51,7 +52,7 @@ namespace DSpyNet.DSPy.Modules
             _lm = lm;
         }
 
-        public override async Task<object> InvokeAsync(object input)
+        public override async Task<object> InvokeAsync(object input, CancellationToken cancellationToken = default)
         {
             // Support both Example and anonymous/typed objects
             Example inputExample;
@@ -70,20 +71,20 @@ namespace DSpyNet.DSPy.Modules
                 inputExample = new Example(dict);
             }
 
-            return await ForwardAsync(inputExample);
+            return await ForwardAsync(inputExample, cancellationToken);
         }
 
-        public virtual async Task<Prediction> ForwardAsync(Example input)
+        public virtual async Task<Prediction> ForwardAsync(Example input, CancellationToken cancellationToken = default)
         {
             // 1. Format Prompt
             var prompt = _adapter.Format(State, input);
-            
+
             _logger?.LogDebug($"[DSPy Predict] Prompt generated:\n{prompt}");
 
             // 2. Call LLM (Semantic Kernel)
             // We use the default chat completion service.
             // In a real app, arguments (temp, etc.) would come from config.
-            var responseText = await _lm.GenerateAsync(prompt);
+            var responseText = await _lm.GenerateAsync(prompt, cancellationToken: cancellationToken);
 
             _logger?.LogDebug($"[DSPy Predict] LLM Response:\n{responseText}");
 
@@ -122,7 +123,7 @@ namespace DSpyNet.DSPy.Modules
                 // We overwrite the State content
                 this.State.Instruction = sourcePredict.State.Instruction;
                 this.State.Demos = new List<Example>(sourcePredict.State.Demos);
-                
+
                 // Signature definitions are static/type-based, so we don't need to copy them,
                 // but we ensure the State has the reference.
                 if (this.State.Signature == null)

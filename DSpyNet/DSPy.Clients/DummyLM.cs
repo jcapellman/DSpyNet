@@ -1,6 +1,7 @@
 // DSpyNet/DSPy.Clients/DummyLM.cs
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DSpyNet.DSPy.Core;
 
@@ -22,8 +23,10 @@ namespace DSpyNet.DSPy.Clients
             _callCount = 0;
         }
 
-        public Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null)
+        public Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             History.Add(prompt);
 
             if (_callCount < _responses.Count)

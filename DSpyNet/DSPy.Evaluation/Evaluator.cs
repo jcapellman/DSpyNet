@@ -1,6 +1,7 @@
 // DSPy.Evaluation/Evaluator.cs
 
 using System.Collections.Concurrent;
+using System.Threading;
 using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Modules;
 using Microsoft.Extensions.Logging;
@@ -24,13 +25,18 @@ namespace DSpyNet.DSPy.Evaluation
         public async Task<double> EvaluateAsync(
             Module program, 
             List<Example> dataset, 
-            Metric metric)
+            Metric metric,
+            CancellationToken cancellationToken = default)
         {
             int correct = 0;
             int total = dataset.Count;
             var exceptions = new ConcurrentBag<Exception>();
 
-            var options = new ParallelOptions { MaxDegreeOfParallelism = _maxDegreeOfParallelism };
+            var options = new ParallelOptions 
+            { 
+                MaxDegreeOfParallelism = _maxDegreeOfParallelism,
+                CancellationToken = cancellationToken
+            };
 
             _logger?.LogInformation($"Starting evaluation on {total} examples...");
 
@@ -43,11 +49,11 @@ namespace DSpyNet.DSPy.Evaluation
                     // unless we are doing online learning.
                     // For safety in a real framework, we might want to Clone the program for each thread, 
                     // but for now we assume InvokeAsync is thread-safe regarding the Prompt Template reading.
-                    
+
                     // Note: If 'program' modifies its own Demos list during inference, this will break.
                     // Standard Predict/CoT does not modify state during InvokeAsync.
-                    
-                    var predictionObj = await program.InvokeAsync(example);
+
+                    var predictionObj = await program.InvokeAsync(example, token);
                     
                     Prediction prediction;
                     if (predictionObj is Prediction p)
@@ -88,10 +94,15 @@ namespace DSpyNet.DSPy.Evaluation
             List<Example> dataset,
             FeedbackMetric metric,
             double failureScore = 0.0,
-            string predName = null)
+            string predName = null,
+            CancellationToken cancellationToken = default)
         {
             var scores = new double[dataset.Count];
-            var options = new ParallelOptions { MaxDegreeOfParallelism = _maxDegreeOfParallelism };
+            var options = new ParallelOptions 
+            { 
+                MaxDegreeOfParallelism = _maxDegreeOfParallelism,
+                CancellationToken = cancellationToken
+            };
             var indexed = dataset.Select((ex, i) => (ex, i));
 
             _logger?.LogInformation($"Starting per-example evaluation on {dataset.Count} examples...");
@@ -100,7 +111,7 @@ namespace DSpyNet.DSPy.Evaluation
             {
                 try
                 {
-                    var predictionObj = await program.InvokeAsync(item.ex);
+                    var predictionObj = await program.InvokeAsync(item.ex, token);
                     if (predictionObj is not Prediction p)
                         throw new InvalidCastException("Program did not return a Prediction object.");
 
