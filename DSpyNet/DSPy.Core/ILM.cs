@@ -1,5 +1,6 @@
 // DSpyNet/DSPy.Core/ILM.cs
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace DSpyNet.DSPy.Core
@@ -9,6 +10,6 @@ namespace DSpyNet.DSPy.Core
     /// </summary>
     public interface ILM
     {
-        Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null);
+        Task<string> GenerateAsync(string prompt, Dictionary<string, object>? kwargs = null, CancellationToken cancellationToken = default);
     }
 }

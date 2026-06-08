@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -47,12 +48,12 @@ namespace DSpyNet.DSPy.Teleprompters
             public int Depth { get; set; }
         }
 
-        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset)
+        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Starting COPRO Optimization...");
 
             // Evaluate Baseline
-            double bestScore = await _evaluator.EvaluateAsync(student, trainset, _metric);
+            double bestScore = await _evaluator.EvaluateAsync(student, trainset, _metric, cancellationToken);
             _logger?.LogInformation($"Baseline Score: {bestScore}%");
 
             TModule bestProgram = (TModule)student.DeepClone();
@@ -64,26 +65,32 @@ namespace DSpyNet.DSPy.Teleprompters
 
             for (int d = 0; d < _depth; d++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 _logger?.LogInformation($"--- COPRO Depth {d + 1}/{_depth} ---");
-                
+
                 // We optimize each predictor in turn (Coordinate Ascent)
                 var currentPredictors = bestProgram.NamedPredictors();
-                
+
                 for (int predIdx = 0; predIdx < currentPredictors.Count; predIdx++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     _logger?.LogInformation($"Optimizing Predictor #{predIdx}...");
-                    
+
                     var predictorToOptimize = currentPredictors[predIdx];
                     var predictorKey = $"Pred_{predIdx}"; // Key to track history
 
                     if (!_history.ContainsKey(predictorKey)) _history[predictorKey] = new List<CandidateHistory>();
 
                     // 1. Generate Candidates
-                    var candidates = await GenerateCandidatesAsync(predictorToOptimize, predictorKey);
+                    var candidates = await GenerateCandidatesAsync(predictorToOptimize, predictorKey, cancellationToken);
 
                     // 2. Evaluate Candidates
                     foreach (var cand in candidates)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
+
                         // Create a temporary program with this candidate instruction applied
                         var candidateProgram = (TModule)bestProgram.DeepClone();
                         var candPredictors = candidateProgram.NamedPredictors();
@@ -91,7 +98,7 @@ namespace DSpyNet.DSPy.Teleprompters
 
                         // Apply Candidate
                         targetPredictor.State.Instruction = cand.Instruction;
-                        
+
                         // Apply Prefix to the LAST output field (standard DSPy behavior)
                         var lastOutput = targetPredictor.State.Signature.OutputFields.LastOrDefault();
                         if (lastOutput != null && !string.IsNullOrEmpty(cand.Prefix))
@@ -100,7 +107,7 @@ namespace DSpyNet.DSPy.Teleprompters
                         }
 
                         // Eval
-                        double score = await _evaluator.EvaluateAsync(candidateProgram, trainset, _metric);
+                        double score = await _evaluator.EvaluateAsync(candidateProgram, trainset, _metric, cancellationToken);
                         _logger?.LogInformation($"  Cand Score: {score:F2}% | Instr: {cand.Instruction.Substring(0, Math.Min(30, cand.Instruction.Length))}...");
 
                         // Update History
@@ -116,7 +123,7 @@ namespace DSpyNet.DSPy.Teleprompters
                             _logger?.LogInformation($"  🚀 New Best Score: {bestScore}%");
                         }
                     }
-                    
+
                     // After iterating candidates for this predictor, we stick with the bestProgram found SO FAR 
                     // before moving to the next predictor in the same depth cycle. 
                     // This is the essence of Coordinate Ascent.
@@ -127,29 +134,31 @@ namespace DSpyNet.DSPy.Teleprompters
             return bestProgram;
         }
 
-        private async Task<List<CandidateHistory>> GenerateCandidatesAsync(IPredictor predictor, string predictorKey)
+        private async Task<List<CandidateHistory>> GenerateCandidatesAsync(IPredictor predictor, string predictorKey, CancellationToken cancellationToken)
         {
             var candidates = new List<CandidateHistory>();
             var history = _history[predictorKey];
-            
+
             // Generate meta-prompt
             // We use a Predict module to call the Prompt Model
-            
+
             // If history is empty, do Zero-Shot generation
             if (history.Count == 0)
             {
                 var generator = new Predict<BasicGenerateInstruction>(_promptModel);
                 // We ask for multiple candidates. In standard DSPy this is done via 'n' param in config.
                 // Here our ILM is simple, so we just loop.
-                
+
                 for(int i=0; i < _breadth; i++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     try 
                     {
                         var result = await generator.InvokeAsync(new { 
                             BasicInstruction = predictor.State.Signature.Instruction 
-                        }) as Prediction;
-                        
+                        }, cancellationToken) as Prediction;
+
                         if (result != null)
                         {
                             candidates.Add(new CandidateHistory
@@ -167,7 +176,7 @@ namespace DSpyNet.DSPy.Teleprompters
                 // Few-Shot generation based on history
                 // Sort history by score ascending (best last)
                 var sortedHistory = history.OrderBy(x => x.Score).ToList();
-                
+
                 var sb = new StringBuilder();
                 foreach(var h in sortedHistory)
                 {
@@ -178,15 +187,17 @@ namespace DSpyNet.DSPy.Teleprompters
                 }
 
                 var generator = new Predict<GenerateInstructionGivenAttempts>(_promptModel);
-                
+
                 for(int i=0; i < _breadth; i++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+
                     try 
                     {
                         var result = await generator.InvokeAsync(new { 
                             AttemptedInstructions = sb.ToString()
-                        }) as Prediction;
-                        
+                        }, cancellationToken) as Prediction;
+
                         if (result != null)
                         {
                             candidates.Add(new CandidateHistory
@@ -199,7 +210,7 @@ namespace DSpyNet.DSPy.Teleprompters
                     catch { /* ignore */ }
                 }
             }
-            
+
             // Filter out empty instructions
             return candidates.Where(c => !string.IsNullOrWhiteSpace(c.Instruction)).ToList();
         }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using DSpyNet.DSPy.Core;
@@ -24,23 +25,23 @@ namespace DSpyNet.DSPy.Modules
             _adapter = new CoTAdapter();
         }
 
-        public override async Task<Prediction> ForwardAsync(Example input)
+        public override async Task<Prediction> ForwardAsync(Example input, CancellationToken cancellationToken = default)
         {
             var cotState = State.Clone();
-            
+
             // 1. Generate Prompt with CoT Trigger
             var promptWithCoT = _adapter.Format(cotState, input);
 
             _logger?.LogDebug($"[DSPy CoT] Prompt:\n{promptWithCoT}");
 
             // 2. Invoke LLM
-            var responseText = await _lm.GenerateAsync(promptWithCoT);
-            
+            var responseText = await _lm.GenerateAsync(promptWithCoT, cancellationToken: cancellationToken);
+
             _logger?.LogDebug($"[DSPy CoT] Response:\n{responseText}");
 
             // 3. Parse using CoT logic (extracts Reasoning + Standard Fields)
             var prediction = _adapter.Parse(responseText, cotState);
-            
+
             if (ExecutionState.IsTracing)
             {
                 ExecutionState.AddEntry(new TraceEntry

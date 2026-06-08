@@ -1,5 +1,6 @@
 // DSPy.Teleprompters/BootstrapFewShot.cs
 
+using System.Threading;
 using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Execution;
 using DSpyNet.DSPy.Modules;
@@ -34,7 +35,7 @@ namespace DSpyNet.DSPy.Teleprompters
             _logger = logger;
         }
 
-        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset)
+        public async Task<TModule> CompileAsync(TModule student, List<Example> trainset, CancellationToken cancellationToken = default)
         {
             _logger?.LogInformation("Starting BootstrapFewShot compilation...");
 
@@ -47,16 +48,18 @@ namespace DSpyNet.DSPy.Teleprompters
             // 2. Run Teacher on Trainset to collect traces
             foreach (var example in trainset)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // We stop if we have enough demos for all predictors (simplified logic: check global count)
                 // In a real robust implementation, we check per-predictor counts.
-                
+
                 try
                 {
                     // Enable Tracing!
                     ExecutionState.BeginTrace();
 
-                    var predictionObj = await teacher.InvokeAsync(example);
-                    
+                    var predictionObj = await teacher.InvokeAsync(example, cancellationToken);
+
                     Prediction prediction;
                     if (predictionObj is Prediction p) prediction = p;
                     else continue;
@@ -66,17 +69,17 @@ namespace DSpyNet.DSPy.Teleprompters
                     {
                         // Success! Let's grab the trace.
                         var trace = ExecutionState.EndTrace();
-                        
+
                         foreach (var step in trace)
                         {
                             // step contains: SignatureState, Inputs, Outputs
                             // We need to create a "Demo" example that combines Input and Output.
                             var demoData = new Dictionary<string, object>();
-                            
+
                             // Copy inputs
                             foreach (var kvp in step.Inputs.ToDictionary())
                                 demoData[kvp.Key] = kvp.Value;
-                                
+
                             // Copy outputs
                             foreach (var kvp in step.Outputs.ToDictionary())
                                 demoData[kvp.Key] = kvp.Value;
@@ -87,10 +90,10 @@ namespace DSpyNet.DSPy.Teleprompters
                             // Since we don't have unique IDs for modules yet, we use the Signature type name or Instruction hash.
                             // Simple approach: use the Instruction text as key for matching.
                             var key = step.SignatureState.Signature.Instruction;
-                            
+
                             if (!name2traces.ContainsKey(key))
                                 name2traces[key] = new List<Example>();
-                                
+
                             name2traces[key].Add(demo);
                         }
                     }
@@ -101,7 +104,7 @@ namespace DSpyNet.DSPy.Teleprompters
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, $"Error processing example {example}");
+                    _logger?.LogError(ex, $"Error processing example {example}. Exception: {ex.GetType().Name} - {ex.Message}");
                     ExecutionState.EndTrace();
                 }
             }
