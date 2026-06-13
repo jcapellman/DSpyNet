@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Modules;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace RealExampleIntegrationTests
 {

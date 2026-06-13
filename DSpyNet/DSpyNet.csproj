@@ -20,7 +20,19 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 
-    <ItemGroup>
+    <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+        <PackageReference Include="Microsoft.SemanticKernel" Version="1.68.0" />
+        <PackageReference Include="SharpLearning.Optimization" Version="0.31.8" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.1" />
+        <PackageReference Include="Microsoft.SemanticKernel" Version="1.68.0" />
+        <PackageReference Include="SharpLearning.Optimization" Version="0.31.8" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
         <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.2" />
         <PackageReference Include="Microsoft.SemanticKernel" Version="1.68.0" />
         <PackageReference Include="SharpLearning.Optimization" Version="0.31.8" />

@@ -8,7 +8,6 @@ using DSpyNet.DSPy.Modules;
 using DSpyNet.DSPy.Teleprompters;
 using Microsoft.SemanticKernel;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace DSpyNet.IntegrationTests
 {

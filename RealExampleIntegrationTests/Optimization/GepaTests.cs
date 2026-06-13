@@ -9,7 +9,6 @@ using DSpyNet.DSPy.Modules;
 using DSpyNet.DSPy.Teleprompters;
 using Microsoft.Extensions.Logging;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace RealExampleIntegrationTests.Optimization
 {
