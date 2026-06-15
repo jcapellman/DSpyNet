@@ -3,8 +3,8 @@ using System;
 using Microsoft.SemanticKernel;
 using DSpyNet.DSPy.Clients;
 using DSpyNet.DSPy.Core;
-using Xunit.Abstractions;
 using Microsoft.Extensions.Logging;
+using Xunit;
 
 namespace RealExampleIntegrationTests
 {

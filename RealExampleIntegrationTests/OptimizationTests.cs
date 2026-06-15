@@ -5,7 +5,6 @@ using DSpyNet.DSPy.Core;
 using DSpyNet.DSPy.Modules;
 using DSpyNet.DSPy.Teleprompters;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace RealExampleIntegrationTests
 {
